@@ -7,6 +7,9 @@ import panda.tests.safety.common as common
 from panda.tests.safety.common import CANPackerPanda
 from panda.tests.safety.hyundai_common import HyundaiButtonBase, HyundaiLongitudinalBase
 
+import sys
+sys.stdout = sys.stderr
+
 
 class TestHyundaiCanfdBase(HyundaiButtonBase, common.PandaCarSafetyTest, common.DriverTorqueSteeringSafetyTest, common.SteerRequestCutSafetyTest):
   SAFETY_PARAM = 0
@@ -111,6 +114,9 @@ class HyundaiCanfdAltButtonsMixin:
     }
     msg = self.packer.make_can_msg_panda("CRUISE_BUTTONS_ALT", bus, values)
     return msg
+  def _lkas_button_msg(self, enabled):
+    values = {"LFA_BTN": enabled}
+    return self.packer.make_can_msg_panda("CRUISE_BUTTONS_ALT", self.PT_BUS, values)
 
 
 class TestHyundaiCanfdHDA1Base(TestHyundaiCanfdBase):
