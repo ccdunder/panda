@@ -19,6 +19,17 @@ DEBUG_VARS = {
 }
 
 
+def bitfield_flags(bf):
+    flags = []
+    offset = 0
+    while bf > 0:
+        if bf & 1:
+            flags.append(offset)
+        bf >>= 1
+        offset += 1
+    return flags
+
+
 # replay a drive to check for safety violations
 def replay_drive(lr, safety_mode, param, alternative_experience, segment=False):
   safety = libpanda_py.libpanda
@@ -159,5 +170,8 @@ if __name__ == "__main__":
 
     lr.reset()
 
-  print(f"replaying {args.route_or_segment_name[0]} with safety mode {args.mode}, param {args.param}, alternative experience {args.alternative_experience}")
+  print(f"replaying {args.route_or_segment_name[0]}\n"
+        f"safety model: {args.mode}\n"
+        f"safety param: {args.param} ({bitfield_flags(args.param)})\n"
+        f"alternative experience: {bitfield_flags(args.alternative_experience)}")
   replay_drive(lr, args.mode, args.param, args.alternative_experience, segment=len(lr.logreader_identifiers) == 1)
