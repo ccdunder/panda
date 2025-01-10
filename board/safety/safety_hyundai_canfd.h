@@ -3,25 +3,66 @@
 #include "safety_declarations.h"
 #include "safety_hyundai_common.h"
 
+/*
+// Option #2:
+// - Requires non-static arrays.
 // *** Addresses checked in rx hook ***
-// EV, ICE, HYBRID: ACCELERATOR (0x35), ACCELERATOR_BRAKE_ALT (0x100), ACCELERATOR_ALT (0x105)
 #define HYUNDAI_CANFD_COMMON_RX_CHECKS(pt_bus)                                                                              \
-  {.msg = {{0x35, (pt_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U},                   \
-           {0x100, (pt_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U},                  \
-           {0}}},                \
+  hyundai_ev_gas_signal       ? (RxCheck){.msg = {{0x35, (pt_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}}}   \
+  : !hyundai_hybrid_gas_signal ? (RxCheck){.msg = {{0x100, (pt_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}}}  \
+                              : (RxCheck){.msg = {{0x105, (pt_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}}}, \
   {.msg = {{0x175, (pt_bus), 24, .check_checksum = true, .max_counter = 0xffU, .frequency = 50U}, { 0 }, { 0 }}},  \
   {.msg = {{0xa0, (pt_bus), 24, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}, { 0 }, { 0 }}},   \
   {.msg = {{0xea, (pt_bus), 24, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}, { 0 }, { 0 }}},   \
+*/
 
-#define HYUNDAI_CANFD_BUTTONS_ADDR_CHECK(pt_bus)                                                                            \
-  {.msg = {{0x1cf, (pt_bus), 8, .check_checksum = false, .max_counter = 0xfU, .frequency = 50U}, { 0 }, { 0 }}}, \
+#define MAX_RX_CHECKS 16
 
-#define HYUNDAI_CANFD_ALT_BUTTONS_ADDR_CHECK(pt_bus)                                                                            \
-  {.msg = {{0x1aa, (pt_bus), 16, .check_checksum = false, .max_counter = 0xffU, .frequency = 50U}, { 0 }, { 0 }}},   \
+//////// pointers
+static safety_config hyundai_canfd_init_safety_config(void) {
+  static RxCheck hyundai_canfd_rx_checks[MAX_RX_CHECKS] = {0};
+  safety_config ret = {
+    .rx_checks = hyundai_canfd_rx_checks,
+    .rx_checks_len = 0,
+    .tx_msgs = NULL,
+    .tx_msgs_len = 0
+  };
+  return ret;
+}
 
-// SCC_CONTROL (from ADAS unit or camera)
-#define HYUNDAI_CANFD_SCC_ADDR_CHECK(scc_bus)                                                                                 \
-  {.msg = {{0x1a0, (scc_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 50U}, { 0 }, { 0 }}}, \
+static void add_rx_check(safety_config *safetyConfig, RxCheck config) {
+  const uint8_t index = safetyConfig->rx_checks_len;
+  safetyConfig->rx_checks_len++;
+  if (index < (uint8_t)MAX_RX_CHECKS) {
+      (void)memcpy(&safetyConfig->rx_checks[index], &config, sizeof(RxCheck));
+  }
+}
+
+
+
+
+// NOTE: this works but isn't ideal because the RxCheck struct is nested so deep.
+/*
+
+RxCheck dynamicConfigs[MAX_RX_CHECKS] = {0};
+
+static void addConfig(uint8_t index, RxCheck config) {
+  if (index < MAX_RX_CHECKS) {
+    dynamicConfigs[index].status.index = config.status.index;
+  }
+}
+
+static RxCheck (*hyundai_canfd_rx_checks(int pt_bus))[] {
+  addConfig(3, (RxCheck){.msg = {{0x175, (pt_bus), 24, .check_checksum = true, .max_counter = 0xffU, .frequency = 50U}, { 0 }, { 0 }}});
+  return &dynamicConfigs;
+}
+*/
+
+
+
+
+
+
 
 static bool hyundai_canfd_alt_buttons = false;
 static bool hyundai_canfd_hda2_alt_steering = false;
@@ -294,85 +335,49 @@ static safety_config hyundai_canfd_init(uint16_t param) {
     hyundai_longitudinal = false;
   }
 
-  safety_config ret;
+  safety_config ret = hyundai_canfd_init_safety_config();
+
+  // RX Common checks.
+  const int pt_bus = hyundai_canfd_hda2 ? 1 : 0;
+  add_rx_check(&ret, (RxCheck){.msg = {{0x175, (pt_bus), 24, .check_checksum = true, .max_counter = 0xffU, .frequency = 50U}, { 0 }, { 0 }}});
+  add_rx_check(&ret, (RxCheck){.msg = {{0xa0, (pt_bus), 24, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}, { 0 }, { 0 }}});
+  add_rx_check(&ret, (RxCheck){.msg = {{0xea, (pt_bus), 24, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}, { 0 }, { 0 }}});
+
+  if (hyundai_ev_gas_signal) {
+    add_rx_check(&ret, (RxCheck){.msg = {{0x35, (pt_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}, { 0 }, { 0 }}});
+  } else if (hyundai_hybrid_gas_signal) {
+    add_rx_check(&ret, (RxCheck){.msg = {{0x105, (pt_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}, { 0 }, { 0 }}});
+  } else {
+    add_rx_check(&ret, (RxCheck){.msg = {{0x100, (pt_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 100U}, { 0 }, { 0 }}});
+  }
+
+  // RX Cruise buttons.
+  if (hyundai_canfd_alt_buttons) {
+    add_rx_check(&ret, (RxCheck){.msg = {{0x1aa, (pt_bus), 16, .check_checksum = false, .max_counter = 0xffU, .frequency = 50U}, { 0 }, { 0 }}});
+  } else {
+    add_rx_check(&ret, (RxCheck){.msg = {{0x1cf, (pt_bus), 8, .check_checksum = false, .max_counter = 0xfU, .frequency = 50U}, { 0 }, { 0 }}});
+  }
+
+  // RX SCC_CONTROL.
+  const int scc_bus = hyundai_canfd_hda2 ? 1 : hyundai_camera_scc ? 2 : 0;
+  add_rx_check(&ret, (RxCheck){.msg = {{0x1a0, (scc_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 50U}, { 0 }, { 0 }}});
+
+  // TX checks.
   if (hyundai_longitudinal) {
     if (hyundai_canfd_hda2) {
-      static RxCheck hyundai_canfd_hda2_long_rx_checks[] = {
-        HYUNDAI_CANFD_COMMON_RX_CHECKS(1)
-        HYUNDAI_CANFD_BUTTONS_ADDR_CHECK(1)
-      };
-
-      ret = BUILD_SAFETY_CFG(hyundai_canfd_hda2_long_rx_checks, HYUNDAI_CANFD_HDA2_LONG_TX_MSGS);
+      SET_TX_MSGS(HYUNDAI_CANFD_HDA2_LONG_TX_MSGS, ret);
     } else {
-      static RxCheck hyundai_canfd_long_alt_buttons_rx_checks[] = {
-        HYUNDAI_CANFD_COMMON_RX_CHECKS(0)
-        HYUNDAI_CANFD_ALT_BUTTONS_ADDR_CHECK(0)
-      };
-
-      // Longitudinal checks for HDA1
-      static RxCheck hyundai_canfd_long_rx_checks[] = {
-        HYUNDAI_CANFD_COMMON_RX_CHECKS(0)
-        HYUNDAI_CANFD_BUTTONS_ADDR_CHECK(0)
-      };
-
-      ret = hyundai_canfd_alt_buttons ? BUILD_SAFETY_CFG(hyundai_canfd_long_alt_buttons_rx_checks, HYUNDAI_CANFD_HDA1_TX_MSGS) : \
-                                        BUILD_SAFETY_CFG(hyundai_canfd_long_rx_checks, HYUNDAI_CANFD_HDA1_TX_MSGS);
+      SET_TX_MSGS(HYUNDAI_CANFD_HDA1_TX_MSGS, ret);
     }
   } else {
     if (hyundai_canfd_hda2) {
-      // *** HDA2 checks ***
-      // E-CAN is on bus 1, ADAS unit sends SCC messages on HDA2.
-      if (hyundai_canfd_alt_buttons) {
-        static RxCheck hyundai_canfd_hda2_alt_buttons_rx_checks[] = {
-          HYUNDAI_CANFD_COMMON_RX_CHECKS(1)
-          HYUNDAI_CANFD_ALT_BUTTONS_ADDR_CHECK(1)
-          HYUNDAI_CANFD_SCC_ADDR_CHECK(1)
-        };
-        ret = hyundai_canfd_hda2_alt_steering ? BUILD_SAFETY_CFG(hyundai_canfd_hda2_alt_buttons_rx_checks, HYUNDAI_CANFD_HDA2_ALT_STEERING_TX_MSGS) : \
-                                                BUILD_SAFETY_CFG(hyundai_canfd_hda2_alt_buttons_rx_checks, HYUNDAI_CANFD_HDA2_TX_MSGS);
+      if (hyundai_canfd_hda2_alt_steering) {
+        SET_TX_MSGS(HYUNDAI_CANFD_HDA2_ALT_STEERING_TX_MSGS, ret);
       } else {
-        static RxCheck hyundai_canfd_hda2_rx_checks[] = {
-          HYUNDAI_CANFD_COMMON_RX_CHECKS(1)
-          HYUNDAI_CANFD_BUTTONS_ADDR_CHECK(1)
-          HYUNDAI_CANFD_SCC_ADDR_CHECK(1)
-        };
-        ret = hyundai_canfd_hda2_alt_steering ? BUILD_SAFETY_CFG(hyundai_canfd_hda2_rx_checks, HYUNDAI_CANFD_HDA2_ALT_STEERING_TX_MSGS) : \
-                                                BUILD_SAFETY_CFG(hyundai_canfd_hda2_rx_checks, HYUNDAI_CANFD_HDA2_TX_MSGS);
+        SET_TX_MSGS(HYUNDAI_CANFD_HDA2_TX_MSGS, ret);
       }
-    } else if (!hyundai_camera_scc) {
-      static RxCheck hyundai_canfd_radar_scc_alt_buttons_rx_checks[] = {
-        HYUNDAI_CANFD_COMMON_RX_CHECKS(0)
-        HYUNDAI_CANFD_ALT_BUTTONS_ADDR_CHECK(0)
-        HYUNDAI_CANFD_SCC_ADDR_CHECK(0)
-      };
-
-      // Radar sends SCC messages on these cars instead of camera
-      static RxCheck hyundai_canfd_radar_scc_rx_checks[] = {
-        HYUNDAI_CANFD_COMMON_RX_CHECKS(0)
-        HYUNDAI_CANFD_BUTTONS_ADDR_CHECK(0)
-        HYUNDAI_CANFD_SCC_ADDR_CHECK(0)
-      };
-
-      ret = hyundai_canfd_alt_buttons ? BUILD_SAFETY_CFG(hyundai_canfd_radar_scc_alt_buttons_rx_checks, HYUNDAI_CANFD_HDA1_TX_MSGS) : \
-                                        BUILD_SAFETY_CFG(hyundai_canfd_radar_scc_rx_checks, HYUNDAI_CANFD_HDA1_TX_MSGS);
     } else {
-      // *** Non-HDA2 checks ***
-      static RxCheck hyundai_canfd_alt_buttons_rx_checks[] = {
-        HYUNDAI_CANFD_COMMON_RX_CHECKS(0)
-        HYUNDAI_CANFD_ALT_BUTTONS_ADDR_CHECK(0)
-        HYUNDAI_CANFD_SCC_ADDR_CHECK(2)
-      };
-
-      // Camera sends SCC messages on HDA1.
-      // Both button messages exist on some platforms, so we ensure we track the correct one using flag
-      static RxCheck hyundai_canfd_rx_checks[] = {
-        HYUNDAI_CANFD_COMMON_RX_CHECKS(0)
-        HYUNDAI_CANFD_BUTTONS_ADDR_CHECK(0)
-        HYUNDAI_CANFD_SCC_ADDR_CHECK(2)
-      };
-
-      ret = hyundai_canfd_alt_buttons ? BUILD_SAFETY_CFG(hyundai_canfd_alt_buttons_rx_checks, HYUNDAI_CANFD_HDA1_TX_MSGS) : \
-                                        BUILD_SAFETY_CFG(hyundai_canfd_rx_checks, HYUNDAI_CANFD_HDA1_TX_MSGS);
+      SET_TX_MSGS(HYUNDAI_CANFD_HDA1_TX_MSGS, ret);
     }
   }
 
