@@ -358,9 +358,13 @@ static safety_config hyundai_canfd_init(uint16_t param) {
     add_rx_check(&ret, (RxCheck){.msg = {{0x1cf, (pt_bus), 8, .check_checksum = false, .max_counter = 0xfU, .frequency = 50U}, { 0 }, { 0 }}});
   }
 
+  if (hyundai_longitudinal) {
+    // TX SCC_CONTROL.
+  } else {
   // RX SCC_CONTROL.
   const int scc_bus = hyundai_canfd_hda2 ? 1 : hyundai_camera_scc ? 2 : 0;
   add_rx_check(&ret, (RxCheck){.msg = {{0x1a0, (scc_bus), 32, .check_checksum = true, .max_counter = 0xffU, .frequency = 50U}, { 0 }, { 0 }}});
+  }
 
   // TX checks.
   if (hyundai_longitudinal) {
