@@ -129,10 +129,10 @@ static void hyundai_canfd_rx_hook(const CANPacket_t *to_push) {
 static bool hyundai_canfd_tx_hook(const CANPacket_t *to_send) {
   const SteeringLimits HYUNDAI_CANFD_STEERING_LIMITS = {
     .max_steer = 270,
-    .max_rt_delta = 112,
+    .max_rt_delta = 250,
     .max_rt_interval = 250000,
-    .max_rate_up = 2,
-    .max_rate_down = 3,
+    .max_rate_up = 4,
+    .max_rate_down = 6,
     .driver_torque_allowance = 250,
     .driver_torque_factor = 2,
     .type = TorqueDriverLimited,
@@ -243,9 +243,11 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   const int HYUNDAI_PARAM_CANFD_HDA2_ALT_STEERING = 128;
   const int HYUNDAI_PARAM_CANFD_ALT_BUTTONS = 32;
 
+  // TODO: Build these more precisely like RX_CHECKS.
   static const CanMsg HYUNDAI_CANFD_HDA2_TX_MSGS[] = {
     {0x50, 0, 16},  // LKAS
     {0x1CF, 1, 8},  // CRUISE_BUTTON
+    // TODO: Include this iff CANFD_ALT_BUTTONS
     {0x1AA, 1, 16}, // CRUISE_BUTTONS_ALT
     {0x2A4, 0, 24}, // CAM_0x2A4
   };
@@ -253,6 +255,7 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   static const CanMsg HYUNDAI_CANFD_HDA2_ALT_STEERING_TX_MSGS[] = {
     {0x110, 0, 32}, // LKAS_ALT
     {0x1CF, 1, 8},  // CRUISE_BUTTON
+    // TODO: Include this iff CANFD_ALT_BUTTONS
     {0x1AA, 1, 16}, // CRUISE_BUTTONS_ALT
     // Needed for cruise control in case of ALT_BUTTONS.
     {0x1A0, 1, 32}, // CRUISE_INFO
@@ -262,7 +265,10 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   static const CanMsg HYUNDAI_CANFD_HDA2_LONG_TX_MSGS[] = {
     {0x50, 0, 16},  // LKAS
     {0x1CF, 1, 8},  // CRUISE_BUTTON
+    // TODO: Include this iff CANFD_ALT_BUTTONS
+    {0x1AA, 1, 16}, // CRUISE_BUTTONS_ALT
     {0x2A4, 0, 24}, // CAM_0x2A4
+    // LONG start
     {0x51, 0, 32},  // ADRV_0x51
     {0x730, 1, 8},  // tester present for ADAS ECU disable
     {0x12A, 1, 16}, // LFA
@@ -273,6 +279,31 @@ static safety_config hyundai_canfd_init(uint16_t param) {
     {0x200, 1, 8},  // ADRV_0x200
     {0x345, 1, 8},  // ADRV_0x345
     {0x1DA, 1, 32}, // ADRV_0x1da
+    {0x38C, 1, 32}, // ADRV_0x38c
+    {0x161, 1, 32}, // MSG_161
+    {0x162, 1, 32}, // MSG_162
+  };
+
+  static const CanMsg HYUNDAI_CANFD_HDA2_ALT_STEERING_LONG_TX_MSGS[] = {
+    {0x110, 0, 32}, // LKAS_ALT
+    {0x1CF, 1, 8},  // CRUISE_BUTTON
+    // TODO: Include this iff CANFD_ALT_BUTTONS
+    {0x1AA, 1, 16}, // CRUISE_BUTTONS_ALT
+    {0x1A0, 1, 32}, // CRUISE_INFO
+    {0x362, 0, 32}, // CAM_0x362
+    // LONG start
+    {0x51, 0, 32},  // ADRV_0x51
+    {0x730, 1, 8},  // tester present for ADAS ECU disable
+    {0x12A, 1, 16}, // LFA
+    {0x160, 1, 16}, // ADRV_0x160
+    {0x1E0, 1, 16}, // LFAHDA_CLUSTER
+    {0x1EA, 1, 32}, // ADRV_0x1ea
+    {0x200, 1, 8},  // ADRV_0x200
+    {0x345, 1, 8},  // ADRV_0x345
+    {0x1DA, 1, 32}, // ADRV_0x1da
+    {0x38C, 1, 32}, // ADRV_0x38c
+    {0x161, 1, 32}, // MSG_161
+    {0x162, 1, 32}, // MSG_162
   };
 
   static const CanMsg HYUNDAI_CANFD_HDA1_TX_MSGS[] = {
@@ -281,6 +312,8 @@ static safety_config hyundai_canfd_init(uint16_t param) {
     {0x1CF, 2, 8},  // CRUISE_BUTTON
     {0x1AA, 2, 16}, // CRUISE_BUTTONS_ALT
     {0x1E0, 0, 16}, // LFAHDA_CLUSTER
+    {0x161, 0, 32}, // MSG_161
+    {0x162, 0, 32}, // MSG_162
   };
 
 
@@ -329,7 +362,11 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   // TX checks.
   if (hyundai_longitudinal) {
     if (hyundai_canfd_hda2) {
-      SET_TX_MSGS(HYUNDAI_CANFD_HDA2_LONG_TX_MSGS, ret);
+      if (hyundai_canfd_hda2_alt_steering) {
+        SET_TX_MSGS(HYUNDAI_CANFD_HDA2_ALT_STEERING_LONG_TX_MSGS, ret);
+      } else {
+        SET_TX_MSGS(HYUNDAI_CANFD_HDA2_LONG_TX_MSGS, ret);
+      }
     } else {
       SET_TX_MSGS(HYUNDAI_CANFD_HDA1_TX_MSGS, ret);
     }
